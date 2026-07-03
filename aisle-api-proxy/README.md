@@ -6,18 +6,20 @@
 https://api.aisle.sh/run_aisle/prompts/asdasda897-cc91-457f-83aa-44bdd
 ```
 
-自动转换并反向代理到标准 OpenAI Chat Completions 风格地址：
+适配成标准 OpenAI Chat Completions 风格接口：
 
 ```text
-https://api.aisle.sh/run_aisle/v1/chat/completions
+POST /v1/chat/completions
 ```
 
 ## 功能
 
-- 读取 `AISLE_PROMPT_URL`，自动推导上游 `chat/completions` 地址。
+- 读取 `AISLE_PROMPT_URL`，调用真实可用的 Aisle prompt endpoint。
 - 对外提供 `POST /v1/chat/completions`，可用于大多数 OpenAI SDK 的 `baseURL`。
 - 兼容 `POST /chat/completions` 和 `POST /run_aisle/prompts/{promptId}`。
-- 原样转发请求体，支持 `stream: true` 的流式响应。
+- 自动把 OpenAI `messages` 转换为 Aisle 扁平变量请求体。
+- 自动把 Aisle 普通文本响应包装为 OpenAI `chat.completion` 响应。
+- 支持 `stream: true`，会包装为 Cherry Studio/OpenAI SDK 可消费的 SSE 响应。
 - 支持 Docker 与 Docker Compose 部署。
 
 ## 环境变量
@@ -26,7 +28,9 @@ https://api.aisle.sh/run_aisle/v1/chat/completions
 | --- | --- | --- | --- |
 | `AISLE_PROMPT_URL` | 是 | 无 | Aisle 原始 prompt API 地址，例如 `https://api.aisle.sh/run_aisle/prompts/asdasda897-cc91-457f-83aa-44bdd` |
 | `AISLE_API_KEY` | 否 | 无 | 如果客户端不传 `Authorization`，代理会自动补充 `Bearer ${AISLE_API_KEY}` |
-| `AISLE_COMPLETION_URL` | 否 | 自动推导 | 手动覆盖最终上游地址 |
+| `AISLE_MODEL_NAME` | 否 | `aisle-prompt` | 对外暴露给 OpenAI SDK/Cherry Studio 的模型名 |
+| `AISLE_VARIABLE_NAME` | 否 | `variable_name` | 优先写入的 Aisle prompt 变量名 |
+| `AISLE_COMPLETION_URL` | 否 | 自动推导 | 健康检查中展示的兼容接口地址，不作为真实上游调用地址 |
 | `PORT` | 否 | `3000` | 服务监听端口 |
 | `HOST` | 否 | `0.0.0.0` | 服务监听地址 |
 | `PROXY_TIMEOUT_MS` | 否 | `120000` | 上游请求超时时间，单位毫秒 |
@@ -38,6 +42,7 @@ https://api.aisle.sh/run_aisle/v1/chat/completions
 ```yaml
 environment:
   AISLE_PROMPT_URL: "https://api.aisle.sh/run_aisle/prompts/asdasda897-cc91-457f-83aa-44bdd"
+  AISLE_VARIABLE_NAME: "variable_name"
 ```
 
 2. 启动服务：
@@ -79,7 +84,9 @@ aisle-api-proxy:
   volumes:
     - ${BASE_PATH}/aisle-api-proxy:/app:ro
   environment:
-    AISLE_PROMPT_URL: "https://api.aisle.sh/run_aisle/prompts/asdasda897-cc91-457f-83aa-44bdd"
+    AISLE_PROMPT_URL: "https://api.aisle.sh/run_aisle/prompts/cafd8987-cc91-457f-83aa-44bdd9d20462"
+    AISLE_VARIABLE_NAME: "variable_name"
+    AISLE_MODEL_NAME: "aisle-prompt"
     PROXY_TIMEOUT_MS: "120000"
   ports:
     - 8320:3000
@@ -135,7 +142,19 @@ POST http://localhost:3000/v1/chat/completions
 代理实际转发到：
 
 ```text
-POST https://api.aisle.sh/run_aisle/v1/chat/completions
+POST https://api.aisle.sh/run_aisle/prompts/{promptId}
+```
+
+转发给 Aisle 的请求体形如：
+
+```json
+{
+  "variable_name": "用户最后一条消息",
+  "prompt": "用户最后一条消息",
+  "input": "用户最后一条消息",
+  "message": "用户最后一条消息",
+  "query": "用户最后一条消息"
+}
 ```
 
 ## 本地运行

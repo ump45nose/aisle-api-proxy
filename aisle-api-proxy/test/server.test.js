@@ -3,9 +3,15 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  buildAislePromptPayload,
   buildForwardHeaders,
+  buildChatCompletionResponse,
   deriveCompletionUrl,
+  derivePromptUrl,
+  extractAisleText,
+  extractPromptText,
   isChatCompletionRequest,
+  isModelsRequest,
   resolveConfig
 } = require("../src/server");
 
@@ -26,6 +32,12 @@ test("deriveCompletionUrl converts prompt API URL to chat completions URL", () =
   const result = deriveCompletionUrl("https://api.aisle.sh/run_aisle/prompts/asdasda897-cc91-457f-83aa-44bdd");
 
   assert.equal(result.toString(), "https://api.aisle.sh/run_aisle/v1/chat/completions");
+});
+
+test("derivePromptUrl keeps real Aisle prompt endpoint", () => {
+  const result = derivePromptUrl("https://api.aisle.sh/run_aisle/prompts/cafd8987-cc91-457f-83aa-44bdd9d20462");
+
+  assert.equal(result.toString(), "https://api.aisle.sh/run_aisle/prompts/cafd8987-cc91-457f-83aa-44bdd9d20462");
 });
 
 test("deriveCompletionUrl preserves path prefix before run_aisle", () => {
@@ -53,8 +65,16 @@ test("deriveCompletionUrl rejects invalid prompt URL", () => {
 test("isChatCompletionRequest supports OpenAI-compatible and prompt-shaped paths", () => {
   assert.equal(isChatCompletionRequest(mockRequest("POST", "/v1/chat/completions")), true);
   assert.equal(isChatCompletionRequest(mockRequest("POST", "/chat/completions")), true);
+  assert.equal(isChatCompletionRequest(mockRequest("POST", "/custom/base/v1/chat/completions")), true);
   assert.equal(isChatCompletionRequest(mockRequest("POST", "/run_aisle/prompts/prompt-id")), true);
   assert.equal(isChatCompletionRequest(mockRequest("GET", "/v1/chat/completions")), false);
+});
+
+test("isModelsRequest supports OpenAI-compatible model discovery paths", () => {
+  assert.equal(isModelsRequest(mockRequest("GET", "/v1/models")), true);
+  assert.equal(isModelsRequest(mockRequest("GET", "/models")), true);
+  assert.equal(isModelsRequest(mockRequest("GET", "/custom/base/v1/models")), true);
+  assert.equal(isModelsRequest(mockRequest("POST", "/v1/models")), false);
 });
 
 test("buildForwardHeaders strips hop-by-hop headers and injects configured API key", () => {
@@ -78,9 +98,57 @@ test("buildForwardHeaders strips hop-by-hop headers and injects configured API k
 test("resolveConfig validates port and derives upstream URL", () => {
   const config = resolveConfig({
     PORT: "18080",
-    AISLE_PROMPT_URL: "https://api.aisle.sh/run_aisle/prompts/prompt-id"
+    AISLE_PROMPT_URL: "https://api.aisle.sh/run_aisle/prompts/prompt-id",
+    AISLE_MODEL_NAME: "aisle-test",
+    AISLE_VARIABLE_NAME: "question"
   });
 
   assert.equal(config.port, 18080);
+  assert.equal(config.promptUrl.toString(), "https://api.aisle.sh/run_aisle/prompts/prompt-id");
   assert.equal(config.completionUrl.toString(), "https://api.aisle.sh/run_aisle/v1/chat/completions");
+  assert.equal(config.modelName, "aisle-test");
+  assert.equal(config.variableName, "question");
+});
+
+test("extractPromptText reads latest user message", () => {
+  const result = extractPromptText({
+    messages: [
+      { role: "system", content: "system" },
+      { role: "user", content: "first" },
+      { role: "assistant", content: "answer" },
+      { role: "user", content: [{ type: "text", text: "second" }] }
+    ]
+  });
+
+  assert.equal(result, "second");
+});
+
+test("buildAislePromptPayload maps OpenAI messages to flat prompt variables", () => {
+  const result = buildAislePromptPayload(
+    {
+      messages: [{ role: "user", content: "hello" }],
+      variables: { custom: "value" }
+    },
+    { variableName: "question" }
+  );
+
+  assert.equal(result.question, "hello");
+  assert.equal(result.variable_name, "hello");
+  assert.equal(result.prompt, "hello");
+  assert.equal(result.custom, "value");
+});
+
+test("extractAisleText unwraps JSON string and object responses", () => {
+  assert.equal(extractAisleText("\"hello\""), "hello");
+  assert.equal(extractAisleText("{\"output\":\"hello\"}"), "hello");
+  assert.equal(extractAisleText("plain text"), "plain text");
+});
+
+test("buildChatCompletionResponse wraps content as OpenAI response", () => {
+  const result = buildChatCompletionResponse("hello", { model: "demo" }, { modelName: "fallback" });
+
+  assert.equal(result.object, "chat.completion");
+  assert.equal(result.model, "demo");
+  assert.equal(result.choices[0].message.content, "hello");
+  assert.equal(result.choices[0].finish_reason, "stop");
 });

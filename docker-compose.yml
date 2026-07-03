@@ -1,0 +1,13 @@
+services:
+  aisle-api-proxy:
+    build: .
+    container_name: aisle-api-proxy
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      AISLE_PROMPT_URL: "https://api.aisle.sh/run_aisle/prompts/cafd8987-cc91-457f-83aa-44bdd9d20462"
+      AISLE_MODEL_NAME: "aisle-prompt"
+      AISLE_VARIABLE_NAME: "variable_name"
+      # AISLE_API_KEY: "sk-your-aisle-key"
+      PROXY_TIMEOUT_MS: "120000"

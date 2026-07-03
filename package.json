@@ -1,0 +1,14 @@
+{
+  "name": "aisle-api-proxy",
+  "version": "1.0.0",
+  "description": "Reverse proxy that converts Aisle prompt API URLs to OpenAI-compatible chat completion URLs.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}
